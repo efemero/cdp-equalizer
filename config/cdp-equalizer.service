@@ -1,0 +1,17 @@
+[Unit]
+Description=CDP equalizer
+After=sshd.service
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/opt/cdp-equalizer
+EnvironmentFile=/opt/cdp-equalizer/env.conf
+ExecStart=/opt/cdp-equalizer/cdp-equalizer
+ExecReload=/usr/bin/kill -USR1 $MAINPID
+Type=simple
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
