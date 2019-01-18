@@ -1,5 +1,38 @@
 # cdp-equalizer
-Keep your MakerDAO CDP in a certain collateralization ratio range.
+
+__DON'T TRUST ME, READ THE CODE, THIS APP PLAY WITH YOUR MONEY!!!__
+
+This tool watch a CDP, and try to keep it inside a certain collateralization ratio range.
+
+The application requires that you set up 3 environment variables:
+
+- __CDPID__ : the number of the CDP to watch
+- __PROXY__ : the ethereum address of the proxy contract that own the CDP, as created when using [CDP Portal](https://cdp.makerdao.com/)
+- __CDPPK__ : the private key of the owner of the PROXY.
+__WARNING!!! this is your private key, run this only on a secure computer!!!__
+
+The proxy needs DAI and MKR permissions, unlock DAI and MKR on [CDP Portal](https://cdp.makerdao.com/).
+
+You can pass 3 parameters to the application at launch:
+
+- `-maxRatio` (float) : The maximum ratio of your CDP (default 2.15)
+- `-minRatio` (float) : The minimum ratio of your CDP (default 1.9)
+- `-targetRatio` (float) : The target ratio of your CDP (default 2)
+
+If the ratio falls below the `minRatio`, 
+the app free a certain amount of ETH, 
+sells it for DAI on oasis, and wipe part of the debt with these DAI. 
+This is done in one transaction.
+The goal is to catch the `targetRatio`.
+This needs that you keep some MKR in your account.
+
+If the price is up and the ratio go over the `maxRatio`,
+the app draw a certain amount of DAI, sells it for ETH, 
+and lock the ETH into the CDP.
+This is done in one transaction.
+The goal is to catch the `targetRatio`.
+
+The application uses the contract located at [0xaf5e231e221d5d6a2d3aadef2b08d39837875837](https://etherscan.io/address/0xaf5e231e221d5d6a2d3aadef2b08d39837875837), with the source code located in <https://github.com/efemero/equalizer-proxy>.
 
 ## Install and run
 
