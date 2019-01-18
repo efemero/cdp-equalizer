@@ -32,7 +32,7 @@ and lock the ETH into the CDP.
 This is done in one transaction.
 The goal is to catch the `targetRatio`.
 
-The application uses the contract located at [0xaf5e231e221d5d6a2d3aadef2b08d39837875837](https://etherscan.io/address/0xaf5e231e221d5d6a2d3aadef2b08d39837875837), with the source code located in <https://github.com/efemero/equalizer-proxy>.
+The application uses the contract located at [0xf1e1d750137ae5c1bd91fe7bd0da692a3ed1d553](https://etherscan.io/address/0xf1e1d750137ae5c1bd91fe7bd0da692a3ed1d553), with the source code located in <https://github.com/efemero/equalizer-proxy>.
 
 ## Install and run
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.0.3
+
+- Doc: smart contract address
+
 ## v1.0.2
 
 - More doc in readme
