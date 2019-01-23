@@ -17,6 +17,7 @@ import (
 	"github.com/Efemero/cdp-equalizer/oracle"
 	"github.com/Efemero/cdp-equalizer/portal"
 	"github.com/Efemero/cdp-equalizer/transaction"
+	"github.com/Efemero/cdp-equalizer/uniswap"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,17 +28,17 @@ import (
 )
 
 var (
-	makerAddress       = common.HexToAddress("0x448a5065aeBB8E423F0896E6c5D525C040f59af3")
-	oracleAddress      = common.HexToAddress("0x729D19f657BD0614b4985Cf1D82531c67569197B")
-	stationAddress     = common.HexToAddress("0xdc919494349E803fbd2D4064106944418381EDb3")
-	daiAddress         = common.HexToAddress("0x89d24a6b4ccb1b6faa2625fe562bdd9a23260359")
-	pethAddress        = common.HexToAddress("0xf53ad2c6851052a81b42133467480961b2321c09")
-	wethAddress        = common.HexToAddress("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
-	mkrAddress         = common.HexToAddress("0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2")
-	oasisDirectAddress = common.HexToAddress("0x279594b6843014376a422ebb26a6eab7a30e36f0")
-	otcAddress         = common.HexToAddress("0xb7ac09c2c0217b07d7c103029b4918a2c401eecb")
-	portalAddress      = common.HexToAddress("0xd64979357160E8146F6e1d805cf20437397bF1ba")
-	equalizerAddress   = common.HexToAddress("0xF1E1d750137Ae5c1bD91fe7Bd0da692a3Ed1d553")
+	makerAddress     = common.HexToAddress("0x448a5065aeBB8E423F0896E6c5D525C040f59af3")
+	oracleAddress    = common.HexToAddress("0x729D19f657BD0614b4985Cf1D82531c67569197B")
+	stationAddress   = common.HexToAddress("0xdc919494349E803fbd2D4064106944418381EDb3")
+	daiAddress       = common.HexToAddress("0x89d24a6b4ccb1b6faa2625fe562bdd9a23260359")
+	pethAddress      = common.HexToAddress("0xf53ad2c6851052a81b42133467480961b2321c09")
+	wethAddress      = common.HexToAddress("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
+	mkrAddress       = common.HexToAddress("0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2")
+	oasisAddress     = common.HexToAddress("0xb7ac09c2c0217b07d7c103029b4918a2c401eecb")
+	portalAddress    = common.HexToAddress("0xd64979357160E8146F6e1d805cf20437397bF1ba")
+	equalizerAddress = common.HexToAddress("0xF1E1d750137Ae5c1bD91fe7Bd0da692a3Ed1d553")
+	uniswapAddress   = common.HexToAddress("0x09cabEC1eAd1c0Ba254B09efb3EE13841712bE14")
 )
 
 // Client is a struct that can make some calls to some contracts
@@ -48,6 +49,8 @@ type Client struct {
 	maker          *maker.Maker
 	oracle         *oracle.Oracle
 	portal         *portal.Portal
+	uniswap        *uniswap.Uniswap
+	oasis          *oasis.Oasis
 	equalizer      *equalizer.Equalizer
 	dai            *erc20.Erc20
 	peth           *erc20.Erc20
@@ -74,6 +77,14 @@ func NewClient(node string, privateKey string, cdpID int64, proxy string) (clien
 	client.maker, err = maker.NewMaker(makerAddress, client.Client)
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not instantiate maker at address '%s'", makerAddress.Hex())
+	}
+	client.uniswap, err = uniswap.NewUniswap(uniswapAddress, client.Client)
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not instantiate uniswap at address '%s'", uniswapAddress.Hex())
+	}
+	client.oasis, err = oasis.NewOasis(oasisAddress, client.Client)
+	if err != nil {
+		return nil, errors.Wrapf(err, "could not instantiate oasis at address '%s'", oasisAddress.Hex())
 	}
 	client.oracle, err = oracle.NewOracle(oracleAddress, client.Client)
 	if err != nil {
@@ -113,17 +124,6 @@ func NewClient(node string, privateKey string, cdpID int64, proxy string) (clien
 	client.address = crypto.PubkeyToAddress(*client.publicKey)
 
 	return client, nil
-}
-
-// GetHeaderChan returns a channel that is filled with the headers of new blocks
-func (client *Client) GetHeaderChan() (chan *types.Header, error) {
-	headers := make(chan *types.Header)
-	_, err := client.Client.SubscribeNewHead(context.Background(), headers)
-	if err != nil {
-		close(headers)
-		return nil, errors.Wrap(err, "cannot initialize header chan")
-	}
-	return headers, nil
 }
 
 // GetAuth returns a *bind.TransactOpts to go to signed transactions
@@ -198,11 +198,11 @@ func (client *Client) IsMkrAllowed() (allowed bool, err error) {
 	return allowed, nil
 }
 
-// IsPethAllowed returns true if the CDP Station contract is allowed to use our PETH
-func (client *Client) IsPethAllowed() (allowed bool, err error) {
-	result, err := client.peth.Allowance(&bind.CallOpts{}, client.address, stationAddress)
+// IsDaiAllowed returns true if the CDP Station contract is allowed to use our DAI
+func (client *Client) IsDaiAllowed() (allowed bool, err error) {
+	result, err := client.dai.Allowance(&bind.CallOpts{}, client.address, client.dsproxyAddress)
 	if err != nil {
-		return false, errors.Wrap(err, "could not read the PETH status")
+		return false, errors.Wrap(err, "could not read the DAI status")
 	}
 	allowed = result.Cmp(ethutils.ToWei(big.NewFloat(1000000), 18)) > 0
 	return allowed, nil
@@ -210,6 +210,21 @@ func (client *Client) IsPethAllowed() (allowed bool, err error) {
 
 // DrawSellLock retrieve DAI from CDP, sells it on oasis.direct and locks ETH in the CDP
 func (client Client) DrawSellLock(dai *big.Float) (*types.Transaction, error) {
+	// allow 5% price slippage
+	minLockDai := new(big.Float).Mul(dai, big.NewFloat(0.95))
+	price, err := client.GetEthPrice()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not retrieve ETH price")
+	}
+	minLock := new(big.Float).Quo(minLockDai, price)
+	eth, err := client.GetOasisDaiToEth(dai)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not get expected eth from exchange")
+	}
+	if eth.Cmp(minLock) < 0 {
+		return nil, errors.New("price slippage to high")
+	}
+
 	auth, err := client.GetAuth()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not get auth for transaction DrawSellLock")
@@ -225,13 +240,7 @@ func (client Client) DrawSellLock(dai *big.Float) (*types.Transaction, error) {
 		return nil, errors.Wrap(err, "could not get [32]byte")
 	}
 
-	minLockDai := new(big.Float).Mul(dai, big.NewFloat(0.9))
-	price, err := client.GetEthPrice()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not retrieve ETH price")
-	}
-	minLock := new(big.Float).Quo(minLockDai, price)
-	b, err := a.Pack("drawSellLock", makerAddress, otcAddress, cdpIDb, daiAddress, ethutils.ToWei(dai, 18), wethAddress, ethutils.ToWei(minLock, 18))
+	b, err := a.Pack("drawSellLock", makerAddress, oasisAddress, cdpIDb, daiAddress, ethutils.ToWei(dai, 18), wethAddress, ethutils.ToWei(minLock, 18))
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not pack data")
 	}
@@ -245,6 +254,21 @@ func (client Client) DrawSellLock(dai *big.Float) (*types.Transaction, error) {
 
 // FreeSellWipe retrieve ETH from CDP, sells it on oasis.direct and wipe DAI in the CDP
 func (client Client) FreeSellWipe(eth *big.Float) (*types.Transaction, error) {
+	// allow 5% price slippage
+	minWipeEth := new(big.Float).Mul(eth, big.NewFloat(0.95))
+	price, err := client.GetEthPrice()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not retrieve ETH price")
+	}
+	minWipe := new(big.Float).Mul(minWipeEth, price)
+	dai, err := client.GetOasisEthToDai(eth)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not get expected dai from exchange")
+	}
+	if dai.Cmp(minWipe) < 0 {
+		return nil, errors.New("price slippage to high")
+	}
+
 	auth, err := client.GetAuth()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not get auth for transaction FreeSellWipe")
@@ -260,8 +284,7 @@ func (client Client) FreeSellWipe(eth *big.Float) (*types.Transaction, error) {
 		return nil, errors.Wrapf(err, "could not get [32]byte")
 	}
 
-	minWipe := new(big.Float).Mul(eth, big.NewFloat(0.9))
-	b, err := a.Pack("freeSellWipe", makerAddress, otcAddress, cdpIDb, daiAddress, ethutils.ToWei(eth, 18), wethAddress, ethutils.ToWei(minWipe, 18))
+	b, err := a.Pack("freeSellWipe", makerAddress, oasisAddress, cdpIDb, daiAddress, ethutils.ToWei(eth, 18), wethAddress, ethutils.ToWei(minWipe, 18))
 	if err != nil {
 		return nil, errors.Wrapf(err, "could not pack data")
 	}
@@ -269,36 +292,6 @@ func (client Client) FreeSellWipe(eth *big.Float) (*types.Transaction, error) {
 	if err != nil {
 		log.Fatal(err)
 		return nil, errors.Wrapf(err, "could not freeSellWipe %.5f ETH in CDP #%d", eth, client.cdpID)
-	}
-	return tx, nil
-}
-
-// LockEth send eth amount into the CDP
-func (client Client) LockEth(eth *big.Float) (*types.Transaction, error) {
-	auth, err := client.GetAuth()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not get auth for transaction LockEth")
-	}
-	auth.Value = ethutils.ToWei(eth, 18)
-
-	a, err := abi.JSON(strings.NewReader(portal.PortalABI))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not read portal ABI")
-	}
-
-	cdpIDb, err := ethutils.SliceToBytes32(big.NewInt(client.cdpID).Bytes())
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get [32]byte")
-	}
-
-	b, err := a.Pack("lock", makerAddress, cdpIDb)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not pack data")
-	}
-	tx, err := client.dsproxy.Execute(auth, portalAddress, b)
-	if err != nil {
-		log.Fatal(err)
-		return nil, errors.Wrapf(err, "could not lock %.5f ETH to CDP #%d", eth, client.cdpID)
 	}
 	return tx, nil
 }
@@ -313,114 +306,44 @@ func (client *Client) GetEthBalance() (eth *big.Float, err error) {
 	return ethutils.FromWei(wei, 18), nil
 }
 
-// Draw creates DAI from the CDP
-func (client *Client) Draw(dai *big.Float, cdp *cdp.CDP) (*types.Transaction, error) {
-	auth, err := client.GetAuth()
+// GetOasisDaiToEth returns the amount of ETH that will be given in exchange of DAI
+func (client *Client) GetOasisDaiToEth(dai *big.Float) (eth *big.Float, err error) {
+	ieth, err := client.oasis.GetBuyAmount(nil, wethAddress, daiAddress, ethutils.ToWei(dai, 18))
 	if err != nil {
-		return nil, errors.Wrap(err, "could not generate the Auth")
+		return nil, errors.Wrapf(err, "could not read the ETH price when selling %.5f DAI to oasis", dai)
 	}
-
-	a, err := abi.JSON(strings.NewReader(portal.PortalABI))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not read portal ABI")
-	}
-
-	cdpIDb, err := ethutils.SliceToBytes32(big.NewInt(client.cdpID).Bytes())
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get [32]byte")
-	}
-
-	b, err := a.Pack("draw", makerAddress, cdpIDb, ethutils.ToWei(dai, 18))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not pack data")
-	}
-	tx, err := client.dsproxy.Execute(auth, portalAddress, b)
-	if err != nil {
-		log.Fatal(err)
-		return nil, errors.Wrapf(err, "could not draw %.5f DAI from CDP #%d", dai, client.cdpID)
-	}
-
-	return tx, nil
+	eth = ethutils.FromWei(ieth, 18)
+	return eth, nil
 }
 
-// ChangeEthToDai changes ETH to DAI via oasis direct contract
-func (client *Client) ChangeEthToDai(eth *big.Float) (*types.Transaction, error) {
-	auth, err := client.GetAuth()
+// GetOasisEthToDai returns the amount of DAI that will be given in exchange of ETH
+func (client *Client) GetOasisEthToDai(eth *big.Float) (dai *big.Float, err error) {
+	idai, err := client.oasis.GetBuyAmount(nil, daiAddress, wethAddress, ethutils.ToWei(eth, 18))
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not read the ETH balance of `%s`", client.address.Hex())
+		return nil, errors.Wrapf(err, "could not read the ETH price when selling %.5f ETH to oasis", eth)
 	}
-
-	a, err := abi.JSON(strings.NewReader(oasis.OasisABI))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not read oasis ABI")
-	}
-	ethPrice, err := client.GetEthPrice()
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not read ETH price")
-	}
-	expectedDai := big.NewFloat(0).Mul(eth, ethPrice)
-	minDai := big.NewFloat(0).Mul(expectedDai, big.NewFloat(0.95))
-
-	b, err := a.Pack("sellAllAmountPayEth", otcAddress, wethAddress, daiAddress, ethutils.ToWei(minDai, 18))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not pack data")
-	}
-
-	auth.Value = ethutils.ToWei(eth, 18)
-	tx, err := client.dsproxy.Execute(auth, oasisDirectAddress, b)
-	if err != nil {
-		log.Fatal(err)
-		return nil, errors.Wrap(err, "could not change ETH to DAI")
-	}
-	return tx, nil
-
+	dai = ethutils.FromWei(idai, 18)
+	return dai, nil
 }
 
-// ChangeDaiToEth changes DAI to ETH via oasis direct contract
-func (client *Client) ChangeDaiToEth(dai *big.Float) (*types.Transaction, error) {
-	auth, err := client.GetAuth()
+// GetUniswapDaiToEth returns the amount of ETH that will be given in exchange of DAI
+func (client *Client) GetUniswapDaiToEth(dai *big.Float) (eth *big.Float, err error) {
+	ieth, err := client.uniswap.GetTokenToEthInputPrice(nil, ethutils.ToWei(dai, 18))
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not read the ETH balance of `%s`", client.address.Hex())
+		return nil, errors.Wrapf(err, "could not read the ETH price when selling %.5f DAI to uniswap", dai)
 	}
-
-	a, err := abi.JSON(strings.NewReader(oasis.OasisABI))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not read oasis ABI")
-	}
-	ethPrice, err := client.GetEthPrice()
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not read ETH price")
-	}
-	expectedEth := big.NewFloat(0).Quo(dai, ethPrice)
-	minEth := big.NewFloat(0).Mul(expectedEth, big.NewFloat(0.95))
-
-	b, err := a.Pack("sellAllAmountBuyEth", otcAddress, daiAddress, ethutils.ToWei(dai, 18), wethAddress, ethutils.ToWei(minEth, 18))
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not pack data")
-	}
-
-	tx, err := client.dsproxy.Execute(auth, oasisDirectAddress, b)
-	if err != nil {
-		log.Fatal(err)
-		return nil, errors.Wrap(err, "could not change DAI to ETH")
-	}
-	return tx, nil
-
+	eth = ethutils.FromWei(ieth, 18)
+	return eth, nil
 }
 
-// Wipe refund DAI to the CDP
-func (client *Client) Wipe(dai *big.Float, cdp *cdp.CDP) (*types.Transaction, error) {
-	auth, err := client.GetAuth()
+// GetUniswapEthToDai returns the amount of DAI that will be given in exchange of ETH
+func (client *Client) GetUniswapEthToDai(eth *big.Float) (dai *big.Float, err error) {
+	idai, err := client.uniswap.GetEthToTokenInputPrice(nil, ethutils.ToWei(eth, 18))
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not read the ETH balance of `%s`", client.address.Hex())
+		return nil, errors.Wrapf(err, "could not read the ETH price when selling %.5f ETH to uniswap", eth)
 	}
-
-	tx, err := client.maker.Wipe(auth, cdp.BytesID, ethutils.ToWei(dai, 18))
-	if err != nil {
-		return nil, errors.Wrap(err, "could not wipe DAI")
-	}
-
-	return tx, nil
+	dai = ethutils.FromWei(idai, 18)
+	return dai, nil
 }
 
 // FreeEth unlock some ETH from the CDP
@@ -453,33 +376,11 @@ func (client *Client) FreeEth(eth *big.Float, cdp *cdp.CDP) (*types.Transaction,
 	return tx, nil
 }
 
-// GetPethBalance returns the PETH balance of the account
-func (client *Client) GetPethBalance() (peth *big.Float, err error) {
-	pethWei, err := client.peth.BalanceOf(&bind.CallOpts{}, client.address)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get PETH balance of `%s`", client.address)
-	}
-
-	peth = ethutils.FromWei(pethWei, 18)
-	return peth, nil
-}
-
-// GetDaiBalance returns the DAI balance of the account
-func (client *Client) GetDaiBalance() (dai *big.Float, err error) {
-	daiWei, err := client.dai.BalanceOf(&bind.CallOpts{}, client.address)
-	if err != nil {
-		return nil, errors.Wrapf(err, "could not get DAI balance of `%s`", client.address)
-	}
-
-	dai = ethutils.FromWei(daiWei, 18)
-	return dai, nil
-}
-
-// ApproveMkr approves that the station contract will play with our PETH
+// ApproveMkr approves that the equalizer contract will play with our PETH
 func (client *Client) ApproveMkr() (*types.Transaction, error) {
 	approved, err := client.IsMkrAllowed()
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not get Mkr approval status")
+		return nil, errors.Wrapf(err, "could not get MKR approval status")
 	}
 	if !approved {
 		auth, err := client.GetAuth()
@@ -497,11 +398,11 @@ func (client *Client) ApproveMkr() (*types.Transaction, error) {
 	return nil, nil
 }
 
-// ApprovePeth approves that the station contract will play with our PETH
-func (client *Client) ApprovePeth() (*types.Transaction, error) {
-	approved, err := client.IsPethAllowed()
+// ApproveDai approves that the equalizer contract will play with our DAI
+func (client *Client) ApproveDai() (*types.Transaction, error) {
+	approved, err := client.IsDaiAllowed()
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not get PETH approval status")
+		return nil, errors.Wrapf(err, "could not get DAI approval status")
 	}
 	if !approved {
 		auth, err := client.GetAuth()
@@ -509,9 +410,9 @@ func (client *Client) ApprovePeth() (*types.Transaction, error) {
 			return nil, errors.Wrapf(err, "could not get Auth")
 		}
 
-		tx, err := client.peth.Approve(auth, stationAddress, ethutils.ToWei(big.NewFloat(1000000000), 18))
+		tx, err := client.dai.Approve(auth, client.dsproxyAddress, ethutils.ToWei(big.NewFloat(1000000000), 18))
 		if err != nil {
-			return nil, errors.Wrapf(err, "could not approve `%s` to use PETH", stationAddress.Hex())
+			return nil, errors.Wrapf(err, "could not approve `%s` to use DAI", client.dsproxyAddress.Hex())
 		}
 
 		return tx, nil
