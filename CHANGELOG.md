@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.1.0
+
+- Checks the slippage before sending the transaction
+- Code cleanup, and add new methods to get uniswap price (not used for now)
+
+
 ## v1.0.3
 
 - Doc: smart contract address

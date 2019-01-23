@@ -40,10 +40,8 @@ func main() {
 		log.Fatalf("error while creating client,  error: %v", err)
 	}
 
-	client.ApprovePeth()
+	client.ApproveDai()
 	client.ApproveMkr()
-
-	log.Println("started")
 
 	_, cdp, pethRatio, ethPrice, err := getBase(client)
 	if err != nil {
