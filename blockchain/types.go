@@ -7,17 +7,17 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/Efemero/cdp-equalizer/cdp"
-	"github.com/Efemero/cdp-equalizer/dsproxy"
-	"github.com/Efemero/cdp-equalizer/equalizer"
-	"github.com/Efemero/cdp-equalizer/erc20"
-	"github.com/Efemero/cdp-equalizer/ethutils"
-	"github.com/Efemero/cdp-equalizer/maker"
-	"github.com/Efemero/cdp-equalizer/oasis"
-	"github.com/Efemero/cdp-equalizer/oracle"
-	"github.com/Efemero/cdp-equalizer/portal"
-	"github.com/Efemero/cdp-equalizer/transaction"
-	"github.com/Efemero/cdp-equalizer/uniswap"
+	"github.com/efemero/cdp-equalizer/cdp"
+	"github.com/efemero/cdp-equalizer/dsproxy"
+	"github.com/efemero/cdp-equalizer/equalizer"
+	"github.com/efemero/cdp-equalizer/erc20"
+	"github.com/efemero/cdp-equalizer/ethutils"
+	"github.com/efemero/cdp-equalizer/maker"
+	"github.com/efemero/cdp-equalizer/oasis"
+	"github.com/efemero/cdp-equalizer/oracle"
+	"github.com/efemero/cdp-equalizer/portal"
+	"github.com/efemero/cdp-equalizer/transaction"
+	"github.com/efemero/cdp-equalizer/uniswap"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -149,12 +149,12 @@ func (client *Client) GetAuth() (*bind.TransactOpts, error) {
 }
 
 // GetCDP returns the given CDP
-func (client *Client) GetCDP() (*cdp.CDP, error) {
-	var cdp = cdp.CDP{ID: client.cdpID}
-	copy(cdp.BytesID[:], abi.U256(big.NewInt(client.cdpID)))
+func (client *Client) GetCDP(cdpID int64) (*cdp.CDP, error) {
+	var cdp = cdp.CDP{ID: cdpID}
+	copy(cdp.BytesID[:], abi.U256(big.NewInt(cdpID)))
 	result, err := client.maker.Cups(&bind.CallOpts{}, cdp.BytesID)
 	if err != nil {
-		return nil, errors.Wrapf(err, "could not retrieve informations about cdp.CDP `%d`", client.cdpID)
+		return nil, errors.Wrapf(err, "could not retrieve informations about cdp.CDP `%d`", cdpID)
 	}
 	cdp.DaiDebt = ethutils.FromWei(result.Art, 18)
 	cdp.PethCol = ethutils.FromWei(result.Ink, 18)

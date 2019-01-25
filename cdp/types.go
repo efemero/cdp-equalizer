@@ -124,6 +124,54 @@ func (cdp *CDP) GetDaiToDraw(ethPrice, pethRatio, target *big.Float) *big.Float 
 	return daiToDraw
 }
 
+// GetStatus returns the status of the CDP for this price
+func (cdp *CDP) GetStatus(ethPrice, pethRatio, target *big.Float) (status *Status, err error) {
+	status = new(Status)
+	status.ID = cdp.ID
+	bigZero := *big.NewFloat(0.0)
+
+	daiDebt := Float(bigZero)
+	if cdp.DaiDebt != nil {
+		daiDebt = Float(*cdp.DaiDebt)
+	}
+	status.DaiDebt = &daiDebt
+
+	ethCol := Float(bigZero)
+	if cdp.EthCol != nil {
+		ethCol = Float(*cdp.EthCol)
+	}
+	status.EthCol = &ethCol
+
+	price := Float(bigZero)
+	if ethPrice != nil {
+		price = Float(*ethPrice)
+	}
+	status.Price = &price
+
+	ratio := Float(bigZero)
+	if cdp.GetRatio(ethPrice, pethRatio) != nil {
+		ratio = Float(*(cdp.GetRatio(ethPrice, pethRatio)))
+	}
+	status.Ratio = &ratio
+
+	dcol := new(big.Float).Mul(cdp.EthCol, ethPrice)
+	net := new(big.Float).Sub(dcol, cdp.DaiDebt)
+	daiNet := Float(bigZero)
+	if net != nil {
+		daiNet = Float(*net)
+	}
+	status.DaiNet = &daiNet
+
+	enet := new(big.Float).Quo(net, ethPrice)
+	ethNet := Float(bigZero)
+	if enet != nil {
+		ethNet = Float(*enet)
+	}
+	status.EthNet = &ethNet
+
+	return status, nil
+}
+
 // Log print infos on the CDP in the logs
 func (cdp *CDP) Log(ethPrice, pethRatio, target *big.Float) {
 	ecol := new(big.Float).Mul(cdp.PethCol, pethRatio)

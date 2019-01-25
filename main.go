@@ -1,32 +1,44 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"math/big"
+	"net/http"
 	"os"
 	"strconv"
 	"time"
 
-	"github.com/Efemero/cdp-equalizer/blockchain"
-	"github.com/Efemero/cdp-equalizer/cdp"
-	"github.com/Efemero/cdp-equalizer/transaction"
+	"github.com/efemero/cdp-equalizer/blockchain"
+	"github.com/efemero/cdp-equalizer/cdp"
+	"github.com/efemero/cdp-equalizer/transaction"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/pkg/errors"
+	goji "goji.io"
+	"goji.io/pat"
+	"goji.io/pattern"
 )
 
 var (
 	maxLimit *big.Float
 	minLimit *big.Float
 	target   *big.Float
+
+	client    *blockchain.Client
+	mycdp     *cdp.CDP
+	ethPrice  *big.Float
+	pethRatio *big.Float
+	cdpID     int64
 )
 
 func main() {
 	log.SetOutput(os.Stdout)
 
+	var err error
 	node := "wss://mainnet.infura.io/ws/v3/1f0c50a057c040a0879468a513501c6d"
 	privateKey := os.Getenv("CDPPK")
-	cdpID, err := strconv.ParseInt(os.Getenv("CDPID"), 10, 0)
+	cdpID, err = strconv.ParseInt(os.Getenv("CDPID"), 10, 0)
 	if err != nil {
 		log.Fatal("define an environment variable `CDPID` with your CDP ID, err: ", err)
 	}
@@ -35,7 +47,7 @@ func main() {
 		log.Fatal("define an environment variable `PROXY` with your dp-proxy address")
 	}
 
-	client, err := blockchain.NewClient(node, privateKey, cdpID, proxyAddress)
+	client, err = blockchain.NewClient(node, privateKey, cdpID, proxyAddress)
 	if err != nil {
 		log.Fatalf("error while creating client,  error: %v", err)
 	}
@@ -43,19 +55,70 @@ func main() {
 	client.ApproveDai()
 	client.ApproveMkr()
 
-	_, cdp, pethRatio, ethPrice, err := getBase(client)
+	_, mycdp, pethRatio, ethPrice, err = getBase(client)
 	if err != nil {
-		log.Println(err)
+		log.Fatalf("error while getting base informations, error: %v", err)
+	}
+	go watchCDP(client)
+
+	launchServer()
+}
+
+func launchServer() {
+	mux := goji.NewMux()
+
+	mux.HandleFunc(pat.Get("/"), cdpJSON)
+	mux.HandleFunc(pat.Get("/:cdpID"), cdpJSON)
+	http.ListenAndServe("localhost:8000", mux)
+}
+
+func cdpJSON(w http.ResponseWriter, r *http.Request) {
+	var currentCDP *cdp.CDP
+	value := ""
+	if r != nil && r.Context().Value(pattern.Variable("cdpID")) != nil {
+		value = pat.Param(r, "cdpID")
+		log.Println(value)
+	}
+	if value == "" {
+		currentCDP = mycdp
 	} else {
-		cdp.Log(ethPrice, pethRatio, target)
+		cdpID, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		currentCDP, err = client.GetCDP(cdpID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 	}
 
-	i := 0
+	status, err := currentCDP.GetStatus(ethPrice, pethRatio, target)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	js, err := json.Marshal(status)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(js)
+}
+
+// watchCDP make some requests every 15 seconds to see if the CDP must be equalized
+func watchCDP(client *blockchain.Client) {
+	var i = 0
+	mycdp.Log(ethPrice, pethRatio, target)
 
 	ticker := time.NewTicker(time.Second * 15)
 	for range ticker.C {
 		i++
 		tx, cdp, pethRatio, ethPrice, err := getBase(client)
+		mycdp = cdp
 		if err != nil {
 			log.Println(err)
 			continue
@@ -199,7 +262,7 @@ func getBase(client *blockchain.Client) (tx *transaction.Tx, cdp *cdp.CDP, pethR
 	if err != nil {
 		return nil, nil, nil, nil, errors.Wrap(err, "cannot retrieve transaction")
 	}
-	cdp, err = client.GetCDP()
+	cdp, err = client.GetCDP(cdpID)
 	if err != nil {
 		return nil, nil, nil, nil, errors.Wrap(err, "cannot retrieve CDP")
 	}
