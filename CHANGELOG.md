@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.2.0
+
+- Adding json status of the CDP
+
 ## v1.1.0
 
 - Checks the slippage before sending the transaction

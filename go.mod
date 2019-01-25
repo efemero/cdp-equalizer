@@ -1,4 +1,4 @@
-module github.com/Efemero/cdp-equalizer
+module github.com/efemero/cdp-equalizer
 
 require (
 	github.com/allegro/bigcache v1.1.0 // indirect
@@ -30,6 +30,7 @@ require (
 	github.com/rs/cors v1.6.0 // indirect
 	github.com/stretchr/testify v1.2.2 // indirect
 	github.com/syndtr/goleveldb v0.0.0-20181128100959-b001fa50d6b2 // indirect
+	goji.io v2.0.0+incompatible
 	golang.org/x/crypto v0.0.0-20190103213133-ff983b9c42bc // indirect
 	golang.org/x/net v0.0.0-20181220203305-927f97764cc3 // indirect
 	golang.org/x/sys v0.0.0-20190102155601-82a175fd1598 // indirect

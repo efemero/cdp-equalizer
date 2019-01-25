@@ -34,6 +34,8 @@ The goal is to catch the `targetRatio`.
 
 The application uses the contract located at [0xf1e1d750137ae5c1bd91fe7bd0da692a3ed1d553](https://etherscan.io/address/0xf1e1d750137ae5c1bd91fe7bd0da692a3ed1d553), with the source code located in <https://github.com/efemero/equalizer-proxy>.
 
+To see your cdp, go to port `8000` (e.g. localhost:8000). If you want to see another CDP, go to :8000/:cdpID where cdpID is an integer.
+
 ## Install and run
 
 Assuming a linux server with systemd:
