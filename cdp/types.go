@@ -1,6 +1,7 @@
 package cdp
 
 import (
+	"errors"
 	"log"
 	"math/big"
 )
@@ -51,6 +52,7 @@ func (cdp *CDP) GetEthToFree(ethPrice, target *big.Float) *big.Float {
 	finalEcol := new(big.Float).Mul(finalDebt, target)
 	ethToFree := new(big.Float).Sub(cdp.EthCol, finalEcol)
 	max := cdp.GetMaxEthToFree(ethPrice)
+	log.Println(ethToFree, max)
 
 	limit := new(big.Float).Mul(max, big.NewFloat(0.95))
 	if ethToFree.Cmp(limit) > 0 {
@@ -122,6 +124,42 @@ func (cdp *CDP) GetDaiToDraw(ethPrice, pethRatio, target *big.Float) *big.Float 
 	}
 
 	return daiToDraw
+}
+
+// GetChangePrices returns the prices (up and down) where this CDP must be equalized
+func (cdp *CDP) GetChangePrices(ethPrice, minRatio, maxRatio, pethRatio *big.Float) (minPrice, maxPrice *big.Float) {
+	currentRatio := cdp.GetRatio(ethPrice, pethRatio)
+	minPrice = new(big.Float).Mul(ethPrice, new(big.Float).Quo(minRatio, currentRatio))
+	maxPrice = new(big.Float).Mul(ethPrice, new(big.Float).Quo(maxRatio, currentRatio))
+	return minPrice, maxPrice
+}
+
+// EqualizeCDP returns a new CDP equalized at targetRatio for a given price
+func (cdp *CDP) EqualizeCDP(ethPrice, targetRatio, pethRatio *big.Float) (newCDP *CDP, err error) {
+	newCDP = new(CDP)
+	newCDP.ID = cdp.ID
+	newCDP.BytesID = cdp.BytesID
+	ethToFree := cdp.GetEthToFree(ethPrice, targetRatio)
+	if ethToFree.Cmp(big.NewFloat(0.0)) > 0 {
+		daiToWipe := new(big.Float).Mul(ethPrice, ethToFree)
+		pethToFree := new(big.Float).Quo(ethToFree, pethRatio)
+		newCDP.EthCol = new(big.Float).Sub(cdp.EthCol, ethToFree)
+		newCDP.PethCol = new(big.Float).Sub(cdp.PethCol, pethToFree)
+		newCDP.DaiDebt = new(big.Float).Sub(cdp.DaiDebt, daiToWipe)
+		log.Printf("ethToFree: %.2f, daiToWipe: %.2f, pethToFree: %.2f", ethToFree, daiToWipe, pethToFree)
+	} else {
+		daiToDraw := cdp.GetDaiToDraw(ethPrice, pethRatio, targetRatio)
+		if daiToDraw.Cmp(big.NewFloat(0.0)) < 0 {
+			return nil, errors.New("cannot equalize the CDP")
+		}
+		ethToLock := new(big.Float).Quo(daiToDraw, ethPrice)
+		pethToLock := new(big.Float).Quo(ethToLock, pethRatio)
+		newCDP.DaiDebt = new(big.Float).Add(cdp.DaiDebt, daiToDraw)
+		newCDP.EthCol = new(big.Float).Add(cdp.EthCol, ethToLock)
+		newCDP.PethCol = new(big.Float).Add(cdp.PethCol, pethToLock)
+	}
+	log.Println("newCDP:", newCDP.GetRatio(ethPrice, pethRatio))
+	return newCDP, nil
 }
 
 // GetStatus returns the status of the CDP for this price

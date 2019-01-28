@@ -32,6 +32,12 @@ var (
 	cdpID     int64
 )
 
+type statuses struct {
+	Current *cdp.Status
+	Up      []*cdp.Status
+	Down    []*cdp.Status
+}
+
 func main() {
 	log.SetOutput(os.Stdout)
 
@@ -59,7 +65,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("error while getting base informations, error: %v", err)
 	}
-	go watchCDP(client)
+	//	go watchCDP(client)
 
 	launchServer()
 }
@@ -94,12 +100,67 @@ func cdpJSON(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	cdps := statuses{}
+
 	status, err := currentCDP.GetStatus(ethPrice, pethRatio, target)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	js, err := json.Marshal(status)
+	cdps.Current = status
+
+	// Up
+	currentPrice := new(big.Float).Copy(ethPrice)
+	nextCDP := &cdp.CDP{
+		ID:      currentCDP.ID,
+		BytesID: currentCDP.BytesID,
+		DaiDebt: currentCDP.DaiDebt,
+		PethCol: currentCDP.PethCol,
+		EthCol:  currentCDP.EthCol,
+	}
+	cdps.Up = []*cdp.Status{}
+	for currentPrice.Cmp(big.NewFloat(2000.0)) < 0 {
+		_, currentPrice = nextCDP.GetChangePrices(currentPrice, minLimit, maxLimit, pethRatio)
+		nextCDP, err = nextCDP.EqualizeCDP(currentPrice, target, pethRatio)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		nextStatus, err := nextCDP.GetStatus(currentPrice, pethRatio, target)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		cdps.Up = append(cdps.Up, nextStatus)
+	}
+
+	// Down
+	currentPrice = new(big.Float).Copy(ethPrice)
+	nextCDP = &cdp.CDP{
+		ID:      currentCDP.ID,
+		BytesID: currentCDP.BytesID,
+		DaiDebt: currentCDP.DaiDebt,
+		PethCol: currentCDP.PethCol,
+		EthCol:  currentCDP.EthCol,
+	}
+	cdps.Down = []*cdp.Status{}
+	for currentPrice.Cmp(big.NewFloat(10.0)) > 0 {
+		currentPrice, _ = nextCDP.GetChangePrices(currentPrice, minLimit, maxLimit, pethRatio)
+		log.Println(1, currentPrice)
+		nextCDP, err = nextCDP.EqualizeCDP(currentPrice, target, pethRatio)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		nextStatus, err := nextCDP.GetStatus(currentPrice, pethRatio, target)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		cdps.Down = append(cdps.Down, nextStatus)
+	}
+
+	js, err := json.Marshal(cdps)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

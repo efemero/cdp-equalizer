@@ -2,6 +2,10 @@
 
 ## v1.2.0
 
+- Adding predictions in the JSON
+
+## v1.2.0
+
 - Adding json status of the CDP
 
 ## v1.1.0
