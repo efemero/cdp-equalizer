@@ -52,7 +52,6 @@ func (cdp *CDP) GetEthToFree(ethPrice, target *big.Float) *big.Float {
 	finalEcol := new(big.Float).Mul(finalDebt, target)
 	ethToFree := new(big.Float).Sub(cdp.EthCol, finalEcol)
 	max := cdp.GetMaxEthToFree(ethPrice)
-	log.Println(ethToFree, max)
 
 	limit := new(big.Float).Mul(max, big.NewFloat(0.95))
 	if ethToFree.Cmp(limit) > 0 {
@@ -146,7 +145,6 @@ func (cdp *CDP) EqualizeCDP(ethPrice, targetRatio, pethRatio *big.Float) (newCDP
 		newCDP.EthCol = new(big.Float).Sub(cdp.EthCol, ethToFree)
 		newCDP.PethCol = new(big.Float).Sub(cdp.PethCol, pethToFree)
 		newCDP.DaiDebt = new(big.Float).Sub(cdp.DaiDebt, daiToWipe)
-		log.Printf("ethToFree: %.2f, daiToWipe: %.2f, pethToFree: %.2f", ethToFree, daiToWipe, pethToFree)
 	} else {
 		daiToDraw := cdp.GetDaiToDraw(ethPrice, pethRatio, targetRatio)
 		if daiToDraw.Cmp(big.NewFloat(0.0)) < 0 {
@@ -158,7 +156,6 @@ func (cdp *CDP) EqualizeCDP(ethPrice, targetRatio, pethRatio *big.Float) (newCDP
 		newCDP.EthCol = new(big.Float).Add(cdp.EthCol, ethToLock)
 		newCDP.PethCol = new(big.Float).Add(cdp.PethCol, pethToLock)
 	}
-	log.Println("newCDP:", newCDP.GetRatio(ethPrice, pethRatio))
 	return newCDP, nil
 }
 
