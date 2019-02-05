@@ -91,7 +91,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("error while getting base informations, error: %v", err)
 	}
-	//	go watchCDP(client)
+	go watchCDP(client)
 
 	launchServer()
 }
