@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"html/template"
 	"log"
 	"math/big"
 	"net/http"
@@ -20,10 +21,35 @@ import (
 	"goji.io/pattern"
 )
 
+const cdpTmpl = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>CDP {{.Current.ID}}</title>
+</head>
+<body class="activity-stream">
+<h1>Status of CDP {{.Current.ID}}<h1>
+<h2>Price: {{.Current.Price}} Net: {{.Current.EthNet}}Ξ ({{.Current.DaiNet}}DAI)</h2>
+  <ul style="float: left; border: 2px solid green;">
+    <h2>UP</h2>
+{{range .Up}}
+<li>Price: {{.Price}} Net: {{.EthNet}}Ξ ({{.DaiNet}}DAI)</li>
+{{end}}
+  </ul>
+  <ul style="float: left; border: 2px solid red;">
+    <h2>DOWN</h2>
+{{range .Down}}
+<li>Price: {{.Price}} Net: {{.EthNet}}Ξ ({{.DaiNet}}DAI)</li>
+{{end}}
+  </ul>
+  </body>
+</html>`
+
 var (
-	maxLimit *big.Float
-	minLimit *big.Float
-	target   *big.Float
+	maxLimit     *big.Float
+	minLimit     *big.Float
+	target       *big.Float
+	templatesDir string
 
 	client    *blockchain.Client
 	mycdp     *cdp.CDP
@@ -31,6 +57,12 @@ var (
 	pethRatio *big.Float
 	cdpID     int64
 )
+
+type statuses struct {
+	Current *cdp.Status
+	Up      []*cdp.Status
+	Down    []*cdp.Status
+}
 
 func main() {
 	log.SetOutput(os.Stdout)
@@ -67,39 +99,39 @@ func main() {
 func launchServer() {
 	mux := goji.NewMux()
 
-	mux.HandleFunc(pat.Get("/"), cdpJSON)
-	mux.HandleFunc(pat.Get("/:cdpID"), cdpJSON)
+	jsonMux := goji.SubMux()
+	cdpMux := goji.SubMux()
+
+	// HTML
+	mux.Handle(pat.New("/cdp/*"), cdpMux)
+	cdpMux.HandleFunc(pat.Get("/"), showCDP)
+	cdpMux.HandleFunc(pat.Get("/:cdpID"), showCDP)
+
+	// JSON
+	cdpMux.Handle(pat.New("/json/*"), jsonMux)
+	jsonMux.HandleFunc(pat.Get("/"), cdpJSON)
+	jsonMux.HandleFunc(pat.Get("/:cdpID"), cdpJSON)
 	http.ListenAndServe("localhost:8000", mux)
 }
 
-func cdpJSON(w http.ResponseWriter, r *http.Request) {
-	var currentCDP *cdp.CDP
-	value := ""
-	if r != nil && r.Context().Value(pattern.Variable("cdpID")) != nil {
-		value = pat.Param(r, "cdpID")
-		log.Println(value)
+func showCDP(w http.ResponseWriter, r *http.Request) {
+	cdps := getStatuses(w, r)
+
+	t, err := template.New("cdp").Parse(cdpTmpl)
+	if err != nil {
+		panic(err)
 	}
-	if value == "" {
-		currentCDP = mycdp
-	} else {
-		cdpID, err := strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		currentCDP, err = client.GetCDP(cdpID)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+	err = t.Execute(w, cdps)
+	if err != nil {
+		panic(err)
 	}
 
-	status, err := currentCDP.GetStatus(ethPrice, pethRatio, target)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	js, err := json.Marshal(status)
+	w.Header().Set("Content-Type", "text/html; charset=UTF-8")
+}
+
+func cdpJSON(w http.ResponseWriter, r *http.Request) {
+	cdps := getStatuses(w, r)
+	js, err := json.Marshal(cdps)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -107,6 +139,89 @@ func cdpJSON(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(js)
+}
+
+func getStatuses(w http.ResponseWriter, r *http.Request) *statuses {
+	var currentCDP *cdp.CDP
+	value := ""
+	if r != nil && r.Context().Value(pattern.Variable("cdpID")) != nil {
+		value = pat.Param(r, "cdpID")
+	}
+	if value == "" || value == strconv.Itoa(int(mycdp.ID)) {
+		currentCDP = mycdp
+	} else {
+		cdpID, err := strconv.ParseInt(value, 10, 64)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return nil
+		}
+		currentCDP, err = client.GetCDP(cdpID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return nil
+		}
+	}
+
+	cdps := statuses{}
+
+	status, err := currentCDP.GetStatus(ethPrice, pethRatio, target)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return nil
+	}
+	cdps.Current = status
+
+	// Up
+	currentPrice := new(big.Float).Copy(ethPrice)
+	nextCDP := &cdp.CDP{
+		ID:      currentCDP.ID,
+		BytesID: currentCDP.BytesID,
+		DaiDebt: currentCDP.DaiDebt,
+		PethCol: currentCDP.PethCol,
+		EthCol:  currentCDP.EthCol,
+	}
+	cdps.Up = []*cdp.Status{}
+	for currentPrice.Cmp(big.NewFloat(2000.0)) < 0 {
+		_, currentPrice = nextCDP.GetChangePrices(currentPrice, minLimit, maxLimit, pethRatio)
+		nextCDP, err = nextCDP.EqualizeCDP(currentPrice, target, pethRatio)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return nil
+		}
+		nextStatus, err := nextCDP.GetStatus(currentPrice, pethRatio, target)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return nil
+		}
+		cdps.Up = append(cdps.Up, nextStatus)
+	}
+
+	// Down
+	currentPrice = new(big.Float).Copy(ethPrice)
+	nextCDP = &cdp.CDP{
+		ID:      currentCDP.ID,
+		BytesID: currentCDP.BytesID,
+		DaiDebt: currentCDP.DaiDebt,
+		PethCol: currentCDP.PethCol,
+		EthCol:  currentCDP.EthCol,
+	}
+	cdps.Down = []*cdp.Status{}
+	for currentPrice.Cmp(big.NewFloat(10.0)) > 0 {
+		currentPrice, _ = nextCDP.GetChangePrices(currentPrice, minLimit, maxLimit, pethRatio)
+		nextCDP, err = nextCDP.EqualizeCDP(currentPrice, target, pethRatio)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return nil
+		}
+		nextStatus, err := nextCDP.GetStatus(currentPrice, pethRatio, target)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return nil
+		}
+		cdps.Down = append(cdps.Down, nextStatus)
+	}
+	return &cdps
+
 }
 
 // watchCDP make some requests every 15 seconds to see if the CDP must be equalized
@@ -245,16 +360,6 @@ func watchCDP(client *blockchain.Client) {
 	}
 }
 
-func init() {
-	max := flag.Float64("maxRatio", 2.15, "The maximum ratio of your CDP")
-	min := flag.Float64("minRatio", 1.9, "The minimum ratio of your CDP")
-	ratio := flag.Float64("targetRatio", 2.0, "The target ratio of your CDP")
-	flag.Parse()
-	maxLimit = big.NewFloat(*max)
-	minLimit = big.NewFloat(*min)
-	target = big.NewFloat(*ratio)
-}
-
 func getBase(client *blockchain.Client) (tx *transaction.Tx, cdp *cdp.CDP, pethRatio, ethPrice *big.Float,
 	err error) {
 
@@ -303,4 +408,16 @@ func checkTransaction(client *blockchain.Client, tx *transaction.Tx, header *typ
 		}*/
 	return receipt, nil
 
+}
+
+func init() {
+	max := flag.Float64("maxRatio", 2.15, "The maximum ratio of your CDP")
+	min := flag.Float64("minRatio", 1.9, "The minimum ratio of your CDP")
+	ratio := flag.Float64("targetRatio", 2.0, "The target ratio of your CDP")
+	templates := flag.String("templatesDir", "/opt/cdp-equalizer/templates", "The base directory of the templates")
+	flag.Parse()
+	maxLimit = big.NewFloat(*max)
+	minLimit = big.NewFloat(*min)
+	target = big.NewFloat(*ratio)
+	templatesDir = *templates
 }

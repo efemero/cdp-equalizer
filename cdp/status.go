@@ -24,3 +24,7 @@ func (f *Float) MarshalJSON() ([]byte, error) {
 	s := fmt.Sprintf("%.2f", (*big.Float)(f))
 	return []byte(s), nil
 }
+
+func (f *Float) String() string {
+	return fmt.Sprintf("%.2f", (*big.Float)(f))
+}
