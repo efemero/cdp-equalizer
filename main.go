@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"html/template"
 	"log"
 	"math/big"
 	"net/http"
@@ -19,6 +20,30 @@ import (
 	"goji.io/pat"
 	"goji.io/pattern"
 )
+
+const cdpTmpl = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>CDP {{.Current.ID}}</title>
+</head>
+<body class="activity-stream">
+<h1>Status of CDP {{.Current.ID}}<h1>
+<h2>Price: {{.Current.Price}} Net: {{.Current.EthNet}}Ξ ({{.Current.DaiNet}}DAI)</h2>
+  <ul style="float: left; border: 2px solid green;">
+    <h2>UP</h2>
+{{range .Up}}
+<li>Price: {{.Price}} Net: {{.EthNet}}Ξ ({{.DaiNet}}DAI)</li>
+{{end}}
+  </ul>
+  <ul style="float: left; border: 2px solid red;">
+    <h2>DOWN</h2>
+{{range .Down}}
+<li>Price: {{.Price}} Net: {{.EthNet}}Ξ ({{.DaiNet}}DAI)</li>
+{{end}}
+  </ul>
+  </body>
+</html>`
 
 var (
 	maxLimit     *big.Float
@@ -66,7 +91,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("error while getting base informations, error: %v", err)
 	}
-	go watchCDP(client)
+	//	go watchCDP(client)
 
 	launchServer()
 }
@@ -91,14 +116,17 @@ func launchServer() {
 
 func showCDP(w http.ResponseWriter, r *http.Request) {
 	cdps := getStatuses(w, r)
-	js, err := json.Marshal(cdps)
+
+	t, err := template.New("cdp").Parse(cdpTmpl)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		panic(err)
+	}
+	err = t.Execute(w, cdps)
+	if err != nil {
+		panic(err)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(js)
+	w.Header().Set("Content-Type", "text/html; charset=UTF-8")
 }
 
 func cdpJSON(w http.ResponseWriter, r *http.Request) {

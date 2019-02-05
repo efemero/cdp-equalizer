@@ -1,6 +1,7 @@
 module github.com/efemero/cdp-equalizer
 
 require (
+	github.com/alecthomas/template v0.0.0-20160405071501-a0175ee3bccc
 	github.com/allegro/bigcache v1.1.0 // indirect
 	github.com/aristanetworks/goarista v0.0.0-20190103214300-332ede26fbf0 // indirect
 	github.com/boltdb/bolt v1.3.1
