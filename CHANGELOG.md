@@ -1,8 +1,9 @@
 # Changelog
 
-## v1.2.0
+## v1.3.0
 
 - Adding predictions in the JSON
+- Adding simplified html view o the CDP
 
 ## v1.2.0
 
