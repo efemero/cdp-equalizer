@@ -28,3 +28,7 @@ func (f *Float) MarshalJSON() ([]byte, error) {
 func (f *Float) String() string {
 	return fmt.Sprintf("%.2f", (*big.Float)(f))
 }
+
+func (s *Status) String() string {
+	return fmt.Sprintf("%.2f: %.2f (%.2f)", (*big.Float)(s.Price), (*big.Float)(s.EthNet), (*big.Float)(s.DaiNet))
+}
