@@ -278,21 +278,24 @@ func getStatuses(w http.ResponseWriter, r *http.Request) *statuses {
 
 // watchCDP make some requests every 15 seconds to see if the CDP must be equalized
 func watchCDP(client *blockchain.Client) {
+	var (
+		err error
+		tx  *transaction.Tx
+	)
 	var i = 0
 	mycdp.Log(ethPrice, pethRatio, target)
 
 	ticker := time.NewTicker(time.Second * 15)
 	for range ticker.C {
 		i++
-		tx, cdp, pethRatio, ethPrice, err := getBase(client)
-		mycdp = cdp
+		tx, mycdp, pethRatio, ethPrice, err = getBase(client)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
 
 		if i%60 == 0 {
-			cdp.Log(ethPrice, pethRatio, target)
+			mycdp.Log(ethPrice, pethRatio, target)
 		}
 
 		if tx == nil {
@@ -303,7 +306,7 @@ func watchCDP(client *blockchain.Client) {
 				continue
 			}
 			if eth.Cmp(big.NewFloat(0.25)) < 0 {
-				tx, err := client.FreeEth(big.NewFloat(0.3), cdp)
+				tx, err := client.FreeEth(big.NewFloat(0.3), mycdp)
 				if err != nil {
 					log.Println(err)
 					continue
@@ -312,19 +315,19 @@ func watchCDP(client *blockchain.Client) {
 				transaction.SaveTx(&transaction.Tx{Hash: tx.Hash().Hex(), Kind: transaction.FreeEth})
 				continue
 			}
-			ratio := cdp.GetRatio(ethPrice, pethRatio)
+			ratio := mycdp.GetRatio(ethPrice, pethRatio)
 
 			if ratio.Cmp(minLimit) < 0 {
-				cdp.Log(ethPrice, pethRatio, target)
-				tx, err := client.DoFreeEth(cdp, ethPrice, target)
+				mycdp.Log(ethPrice, pethRatio, target)
+				tx, err := client.DoFreeEth(mycdp, ethPrice, target)
 				if err != nil {
 					log.Println(err)
 					continue
 				}
 				transaction.SaveTx(tx)
 			} else if ratio.Cmp(maxLimit) > 0 {
-				cdp.Log(ethPrice, pethRatio, target)
-				tx, err := client.DoDrawDai(cdp, ethPrice, pethRatio, target)
+				mycdp.Log(ethPrice, pethRatio, target)
+				tx, err := client.DoDrawDai(mycdp, ethPrice, pethRatio, target)
 				if err != nil {
 					log.Println(err)
 					continue
@@ -354,9 +357,9 @@ func watchCDP(client *blockchain.Client) {
 			}
 			if tx.Kind == transaction.DrawSellLock {
 				if receipt.Status != 1 {
-					ratio := cdp.GetRatio(ethPrice, pethRatio)
+					ratio := mycdp.GetRatio(ethPrice, pethRatio)
 					if ratio.Cmp(minLimit) < 0 {
-						tx, err := client.DoFreeEth(cdp, ethPrice, target)
+						tx, err := client.DoFreeEth(mycdp, ethPrice, target)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -364,7 +367,7 @@ func watchCDP(client *blockchain.Client) {
 						transaction.SaveTx(tx)
 						continue
 					} else if ratio.Cmp(maxLimit) > 0 {
-						tx, err := client.DoDrawDai(cdp, ethPrice, pethRatio, target)
+						tx, err := client.DoDrawDai(mycdp, ethPrice, pethRatio, target)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -376,14 +379,14 @@ func watchCDP(client *blockchain.Client) {
 				} else {
 					transaction.SaveTx(nil)
 					log.Println("OK")
-					cdp.Log(ethPrice, pethRatio, target)
+					mycdp.Log(ethPrice, pethRatio, target)
 					continue
 				}
 			} else if tx.Kind == transaction.FreeSellWipe {
 				if receipt.Status != 1 {
-					ratio := cdp.GetRatio(ethPrice, pethRatio)
+					ratio := mycdp.GetRatio(ethPrice, pethRatio)
 					if ratio.Cmp(minLimit) < 0 {
-						tx, err := client.DoFreeEth(cdp, ethPrice, target)
+						tx, err := client.DoFreeEth(mycdp, ethPrice, target)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -391,7 +394,7 @@ func watchCDP(client *blockchain.Client) {
 						transaction.SaveTx(tx)
 						continue
 					} else if ratio.Cmp(maxLimit) > 0 {
-						tx, err := client.DoDrawDai(cdp, ethPrice, pethRatio, target)
+						tx, err := client.DoDrawDai(mycdp, ethPrice, pethRatio, target)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -403,7 +406,7 @@ func watchCDP(client *blockchain.Client) {
 				} else {
 					transaction.SaveTx(nil)
 					log.Println("OK")
-					cdp.Log(ethPrice, pethRatio, target)
+					mycdp.Log(ethPrice, pethRatio, target)
 					continue
 				}
 			}
