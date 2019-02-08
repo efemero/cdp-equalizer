@@ -26,7 +26,7 @@ const cdpTmpl = `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />
-<title>CDP {{.Current.ID}}</title>
+<title>CDP {{.Current.ID}} ({{.Current.Ratio}})</title>
 </head>
 <body class="activity-stream">
 <h1>Status of CDP {{.Current.ID}}<h1>
