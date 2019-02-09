@@ -3,6 +3,8 @@
 ## v1.4.0
 
 - Key prices in the html view
+- Change oasis contract address
+
 
 ## v1.3.0
 
