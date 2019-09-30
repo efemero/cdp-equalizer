@@ -68,7 +68,7 @@ func main() {
 	log.SetOutput(os.Stdout)
 
 	var err error
-	node := "wss://mainnet.infura.io/ws/v3/1f0c50a057c040a0879468a513501c6d"
+	node := os.Getenv("ETHNODE")
 	privateKey := os.Getenv("CDPPK")
 	cdpID, err = strconv.ParseInt(os.Getenv("CDPID"), 10, 0)
 	if err != nil {
@@ -260,6 +260,9 @@ func watchCDP(client *blockchain.Client) {
 				transaction.SaveTx(&transaction.Tx{Hash: tx.Hash().Hex(), Kind: transaction.FreeEth})
 				continue
 			}
+
+			// TODO Check the MKR balance
+
 			ratio := cdp.GetRatio(ethPrice, pethRatio)
 
 			if ratio.Cmp(minLimit) < 0 {
