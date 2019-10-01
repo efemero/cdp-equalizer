@@ -8,6 +8,7 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"time"
 
@@ -25,11 +26,18 @@ const cdpTmpl = `<!doctype html>
 <html>
 <head>
 <meta charset="utf-8" />
-<title>CDP {{.Current.ID}}</title>
+<title>CDP {{.Current.ID}} ({{.Current.Ratio}})</title>
 </head>
 <body class="activity-stream">
 <h1>Status of CDP {{.Current.ID}}<h1>
 <h2>Price: {{.Current.Price}} Net: {{.Current.EthNet}}Ξ ({{.Current.DaiNet}}DAI)</h2>
+<h2>Ratio: {{.Current.Ratio}}</h2>
+  <ul>
+    <h2>Key prices</h2>
+{{range .KeyPrices}}
+<li>Price: {{.Price}} Net: {{.EthNet}}Ξ ({{.DaiNet}}DAI)</li>
+{{end}}
+  </ul>
   <ul style="float: left; border: 2px solid green;">
     <h2>UP</h2>
 {{range .Up}}
@@ -56,19 +64,21 @@ var (
 	ethPrice  *big.Float
 	pethRatio *big.Float
 	cdpID     int64
+	keyPrices = []float64{10, 50, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000}
 )
 
 type statuses struct {
-	Current *cdp.Status
-	Up      []*cdp.Status
-	Down    []*cdp.Status
+	Current   *cdp.Status
+	KeyPrices []*cdp.Status
+	Up        []*cdp.Status
+	Down      []*cdp.Status
 }
 
 func main() {
 	log.SetOutput(os.Stdout)
 
 	var err error
-	node := "wss://mainnet.infura.io/ws/v3/1f0c50a057c040a0879468a513501c6d"
+	node := os.Getenv("ETHNODE")
 	privateKey := os.Getenv("CDPPK")
 	cdpID, err = strconv.ParseInt(os.Getenv("CDPID"), 10, 0)
 	if err != nil {
@@ -142,7 +152,10 @@ func cdpJSON(w http.ResponseWriter, r *http.Request) {
 }
 
 func getStatuses(w http.ResponseWriter, r *http.Request) *statuses {
-	var currentCDP *cdp.CDP
+	var (
+		currentCDP               *cdp.CDP
+		nextPrice, previousPrice *big.Float
+	)
 	value := ""
 	if r != nil && r.Context().Value(pattern.Variable("cdpID")) != nil {
 		value = pat.Param(r, "cdpID")
@@ -181,8 +194,9 @@ func getStatuses(w http.ResponseWriter, r *http.Request) *statuses {
 		EthCol:  currentCDP.EthCol,
 	}
 	cdps.Up = []*cdp.Status{}
+
 	for currentPrice.Cmp(big.NewFloat(2000.0)) < 0 {
-		_, currentPrice = nextCDP.GetChangePrices(currentPrice, minLimit, maxLimit, pethRatio)
+		previousPrice, currentPrice = nextCDP.GetChangePrices(currentPrice, minLimit, maxLimit, pethRatio)
 		nextCDP, err = nextCDP.EqualizeCDP(currentPrice, target, pethRatio)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -194,6 +208,24 @@ func getStatuses(w http.ResponseWriter, r *http.Request) *statuses {
 			return nil
 		}
 		cdps.Up = append(cdps.Up, nextStatus)
+	LoopKPUp:
+		for _, kp := range keyPrices {
+			// check if a keyprice is in the nextStatus
+			if currentPrice.Cmp(big.NewFloat(kp)) > 0 && previousPrice.Cmp(big.NewFloat(kp)) < 0 {
+				for _, status := range cdps.KeyPrices {
+					if big.NewFloat(kp).Cmp((*big.Float)(status.Price)) == 0 {
+						break LoopKPUp
+					}
+				}
+				keyStatus, err := nextCDP.GetStatus(big.NewFloat(kp), pethRatio, target)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return nil
+				}
+				cdps.KeyPrices = append(cdps.KeyPrices, keyStatus)
+				break
+			}
+		}
 	}
 
 	// Down
@@ -207,7 +239,7 @@ func getStatuses(w http.ResponseWriter, r *http.Request) *statuses {
 	}
 	cdps.Down = []*cdp.Status{}
 	for currentPrice.Cmp(big.NewFloat(10.0)) > 0 {
-		currentPrice, _ = nextCDP.GetChangePrices(currentPrice, minLimit, maxLimit, pethRatio)
+		currentPrice, nextPrice = nextCDP.GetChangePrices(currentPrice, minLimit, maxLimit, pethRatio)
 		nextCDP, err = nextCDP.EqualizeCDP(currentPrice, target, pethRatio)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -219,28 +251,52 @@ func getStatuses(w http.ResponseWriter, r *http.Request) *statuses {
 			return nil
 		}
 		cdps.Down = append(cdps.Down, nextStatus)
+	LoopKPDown:
+		for _, kp := range keyPrices {
+			// check if a keyprice is in the nextStatus
+			if nextPrice.Cmp(big.NewFloat(kp)) > 0 && currentPrice.Cmp(big.NewFloat(kp)) < 0 {
+				for _, status := range cdps.KeyPrices {
+					if big.NewFloat(kp).Cmp((*big.Float)(status.Price)) == 0 {
+						break LoopKPDown
+					}
+				}
+				keyStatus, err := nextCDP.GetStatus(big.NewFloat(kp), pethRatio, target)
+				if err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return nil
+				}
+				cdps.KeyPrices = append(cdps.KeyPrices, keyStatus)
+				break
+			}
+		}
 	}
+	sort.Slice(cdps.KeyPrices, func(i, j int) bool {
+		return (*big.Float)(cdps.KeyPrices[i].Price).Cmp((*big.Float)(cdps.KeyPrices[j].Price)) < 0
+	})
 	return &cdps
 
 }
 
 // watchCDP make some requests every 15 seconds to see if the CDP must be equalized
 func watchCDP(client *blockchain.Client) {
+	var (
+		err error
+		tx  *transaction.Tx
+	)
 	var i = 0
 	mycdp.Log(ethPrice, pethRatio, target)
 
 	ticker := time.NewTicker(time.Second * 15)
 	for range ticker.C {
 		i++
-		tx, cdp, pethRatio, ethPrice, err := getBase(client)
-		mycdp = cdp
+		tx, mycdp, pethRatio, ethPrice, err = getBase(client)
 		if err != nil {
 			log.Println(err)
 			continue
 		}
 
 		if i%60 == 0 {
-			cdp.Log(ethPrice, pethRatio, target)
+			mycdp.Log(ethPrice, pethRatio, target)
 		}
 
 		if tx == nil {
@@ -251,7 +307,7 @@ func watchCDP(client *blockchain.Client) {
 				continue
 			}
 			if eth.Cmp(big.NewFloat(0.25)) < 0 {
-				tx, err := client.FreeEth(big.NewFloat(0.3), cdp)
+				tx, err := client.FreeEth(big.NewFloat(0.3), mycdp)
 				if err != nil {
 					log.Println(err)
 					continue
@@ -260,19 +316,19 @@ func watchCDP(client *blockchain.Client) {
 				transaction.SaveTx(&transaction.Tx{Hash: tx.Hash().Hex(), Kind: transaction.FreeEth})
 				continue
 			}
-			ratio := cdp.GetRatio(ethPrice, pethRatio)
+			ratio := mycdp.GetRatio(ethPrice, pethRatio)
 
 			if ratio.Cmp(minLimit) < 0 {
-				cdp.Log(ethPrice, pethRatio, target)
-				tx, err := client.DoFreeEth(cdp, ethPrice, target)
+				mycdp.Log(ethPrice, pethRatio, target)
+				tx, err := client.DoFreeEth(mycdp, ethPrice, target)
 				if err != nil {
 					log.Println(err)
 					continue
 				}
 				transaction.SaveTx(tx)
 			} else if ratio.Cmp(maxLimit) > 0 {
-				cdp.Log(ethPrice, pethRatio, target)
-				tx, err := client.DoDrawDai(cdp, ethPrice, pethRatio, target)
+				mycdp.Log(ethPrice, pethRatio, target)
+				tx, err := client.DoDrawDai(mycdp, ethPrice, pethRatio, target)
 				if err != nil {
 					log.Println(err)
 					continue
@@ -302,9 +358,9 @@ func watchCDP(client *blockchain.Client) {
 			}
 			if tx.Kind == transaction.DrawSellLock {
 				if receipt.Status != 1 {
-					ratio := cdp.GetRatio(ethPrice, pethRatio)
+					ratio := mycdp.GetRatio(ethPrice, pethRatio)
 					if ratio.Cmp(minLimit) < 0 {
-						tx, err := client.DoFreeEth(cdp, ethPrice, target)
+						tx, err := client.DoFreeEth(mycdp, ethPrice, target)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -312,7 +368,7 @@ func watchCDP(client *blockchain.Client) {
 						transaction.SaveTx(tx)
 						continue
 					} else if ratio.Cmp(maxLimit) > 0 {
-						tx, err := client.DoDrawDai(cdp, ethPrice, pethRatio, target)
+						tx, err := client.DoDrawDai(mycdp, ethPrice, pethRatio, target)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -324,14 +380,14 @@ func watchCDP(client *blockchain.Client) {
 				} else {
 					transaction.SaveTx(nil)
 					log.Println("OK")
-					cdp.Log(ethPrice, pethRatio, target)
+					mycdp.Log(ethPrice, pethRatio, target)
 					continue
 				}
 			} else if tx.Kind == transaction.FreeSellWipe {
 				if receipt.Status != 1 {
-					ratio := cdp.GetRatio(ethPrice, pethRatio)
+					ratio := mycdp.GetRatio(ethPrice, pethRatio)
 					if ratio.Cmp(minLimit) < 0 {
-						tx, err := client.DoFreeEth(cdp, ethPrice, target)
+						tx, err := client.DoFreeEth(mycdp, ethPrice, target)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -339,7 +395,7 @@ func watchCDP(client *blockchain.Client) {
 						transaction.SaveTx(tx)
 						continue
 					} else if ratio.Cmp(maxLimit) > 0 {
-						tx, err := client.DoDrawDai(cdp, ethPrice, pethRatio, target)
+						tx, err := client.DoDrawDai(mycdp, ethPrice, pethRatio, target)
 						if err != nil {
 							log.Println(err)
 							continue
@@ -351,7 +407,7 @@ func watchCDP(client *blockchain.Client) {
 				} else {
 					transaction.SaveTx(nil)
 					log.Println("OK")
-					cdp.Log(ethPrice, pethRatio, target)
+					mycdp.Log(ethPrice, pethRatio, target)
 					continue
 				}
 			}

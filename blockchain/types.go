@@ -35,7 +35,7 @@ var (
 	pethAddress      = common.HexToAddress("0xf53ad2c6851052a81b42133467480961b2321c09")
 	wethAddress      = common.HexToAddress("0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
 	mkrAddress       = common.HexToAddress("0x9f8F72aA9304c8B593d555F12eF6589cC3A579A2")
-	oasisAddress     = common.HexToAddress("0xb7ac09c2c0217b07d7c103029b4918a2c401eecb")
+	oasisAddress     = common.HexToAddress("0x39755357759ce0d7f32dc8dc45414cca409ae24e")
 	portalAddress    = common.HexToAddress("0xd64979357160E8146F6e1d805cf20437397bF1ba")
 	equalizerAddress = common.HexToAddress("0xF1E1d750137Ae5c1bD91fe7Bd0da692a3Ed1d553")
 	uniswapAddress   = common.HexToAddress("0x09cabEC1eAd1c0Ba254B09efb3EE13841712bE14")

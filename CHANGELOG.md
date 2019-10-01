@@ -1,9 +1,15 @@
 # Changelog
 
+## v1.4.0
+
+- Key prices in the html view
+- Change oasis contract address
+- Add `ETHNODE` env variable
+
 ## v1.3.0
 
 - Adding predictions in the JSON
-- Adding simplified html view o the CDP
+- Adding simplified html view of the CDP
 
 ## v1.2.0
 

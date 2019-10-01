@@ -1,6 +1,8 @@
 package cdp
 
 import (
+	"github.com/efemero/cdp-equalizer/ethutils"
+
 	"fmt"
 	"math/big"
 )
@@ -26,5 +28,10 @@ func (f *Float) MarshalJSON() ([]byte, error) {
 }
 
 func (f *Float) String() string {
-	return fmt.Sprintf("%.2f", (*big.Float)(f))
+	f64, _ := (*big.Float)(f).Float64()
+	return fmt.Sprintf("%s", ethutils.RenderFloat("", f64))
+}
+
+func (s *Status) String() string {
+	return fmt.Sprintf("%s: %s (%s)", s.Price, s.EthNet, s.DaiNet)
 }
