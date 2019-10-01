@@ -31,6 +31,7 @@ const cdpTmpl = `<!doctype html>
 <body class="activity-stream">
 <h1>Status of CDP {{.Current.ID}}<h1>
 <h2>Price: {{.Current.Price}} Net: {{.Current.EthNet}}Ξ ({{.Current.DaiNet}}DAI)</h2>
+<h2>Collateralization: {{.Current.Ratio}}</h2>
   <ul>
     <h2>Key prices</h2>
 {{range .KeyPrices}}
