@@ -4,7 +4,7 @@
 
 - Key prices in the html view
 - Change oasis contract address
-
+- Add `ETHNODE` env variable
 
 ## v1.3.0
 
