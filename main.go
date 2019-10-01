@@ -89,6 +89,10 @@ func main() {
 		log.Fatal("define an environment variable `PROXY` with your dp-proxy address")
 	}
 
+	if node == ""{
+	    log.Fatal("define an environment variable `ETHNODE` with your the wss address of the node to use (eg wss://mainnet.infura.io/v3/xxxxxx)")
+	}
+
 	client, err = blockchain.NewClient(node, privateKey, cdpID, proxyAddress)
 	if err != nil {
 		log.Fatalf("error while creating client,  error: %v", err)

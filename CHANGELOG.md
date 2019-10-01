@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.4.1
+- Check if ETHNODE is set in .env file
+- Correct Readme
+
 ## v1.4.0
 
 - Key prices in the html view
