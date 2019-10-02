@@ -6,7 +6,7 @@ This tool watch a CDP, and try to keep it inside a certain collateralization rat
 
 The application requires that you set up theses environment variables:
 
-- __ETHNODE__ : the wss address of the node to use (eg wss://mainnet.infura.io/**ws**/v3/xxxxxx)
+- __ETHNODE__ : the wss address of the node to use (eg wss://mainnet.infura.io/ws/v3/xxxxxx)
 - __CDPID__ : the number of the CDP to watch
 - __PROXY__ : the ethereum address of the proxy contract that own the CDP, as created when using [CDP Portal](https://cdp.makerdao.com/)
 - __CDPPK__ : the private key of the owner of the PROXY.
