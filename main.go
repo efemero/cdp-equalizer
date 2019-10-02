@@ -90,7 +90,7 @@ func main() {
 	}
 
 	if node == ""{
-	    log.Fatal("define an environment variable `ETHNODE` with your the wss address of the node to use (eg wss://mainnet.infura.io/v3/xxxxxx)")
+	    log.Fatal("define an environment variable `ETHNODE` with your the wss address of the node to use (eg wss://mainnet.infura.io/ws/v3/xxxxxx)")
 	}
 
 	client, err = blockchain.NewClient(node, privateKey, cdpID, proxyAddress)
